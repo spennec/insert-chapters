@@ -43,6 +43,25 @@ def test_parse_chapter_file_accepts_youtube_style_lines(tmp_path: Path) -> None:
     assert [c.title for c in chapters] == ["Intro", "Setup", "Deep dive", "Wrap up"]
 
 
+def test_parse_chapter_file_ignores_end_timestamp_prefix_in_title(tmp_path: Path) -> None:
+    chapters_file = tmp_path / "chapters.txt"
+    chapters_file.write_text(
+        "\n".join(
+            [
+                "0:01 - 5:13 Take Back The City",
+                "5:14 - 8:33 Chocolate",
+                "57:32 - 1:02:11 Just Say Yes",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    chapters = parse_chapter_file(chapters_file)
+
+    assert [c.start_ms for c in chapters] == [1000, 314000, 3452000]
+    assert [c.title for c in chapters] == ["Take Back The City", "Chocolate", "Just Say Yes"]
+
+
 def test_parse_chapter_file_errors_on_unparseable_line(tmp_path: Path) -> None:
     chapters_file = tmp_path / "chapters.txt"
     chapters_file.write_text("not-a-timestamp title", encoding="utf-8")
@@ -73,6 +92,27 @@ def test_parse_then_normalize_inserts_intro_if_missing_zero(tmp_path: Path) -> N
     ]
 
 
+def test_parse_then_normalize_sets_first_chapter_to_zero_when_under_ten_seconds(tmp_path: Path) -> None:
+    chapters_file = tmp_path / "chapters.txt"
+    chapters_file.write_text(
+        "\n".join(
+            [
+                "0:01 First topic",
+                "0:20 Second topic",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    starts = parse_chapter_file(chapters_file)
+    ranges = normalize_chapters(starts, duration_ms=30000)
+
+    assert [(c.start_ms, c.end_ms, c.title) for c in ranges] == [
+        (0, 20000, "First topic"),
+        (20000, 30000, "Second topic"),
+    ]
+
+
 def test_normalize_chapters_builds_ranges() -> None:
     starts = [
         ChapterStart(0, "Intro"),
@@ -90,14 +130,14 @@ def test_normalize_chapters_builds_ranges() -> None:
 
 
 def test_normalize_chapters_inserts_intro_when_first_chapter_is_not_zero() -> None:
-    starts = [ChapterStart(1000, "Part 1"), ChapterStart(3000, "Part 2")]
+    starts = [ChapterStart(10000, "Part 1"), ChapterStart(13000, "Part 2")]
 
-    ranges = normalize_chapters(starts, duration_ms=5000)
+    ranges = normalize_chapters(starts, duration_ms=25000)
 
     assert [(c.start_ms, c.end_ms, c.title) for c in ranges] == [
-        (0, 1000, "Intro"),
-        (1000, 3000, "Part 1"),
-        (3000, 5000, "Part 2"),
+        (0, 10000, "Intro"),
+        (10000, 13000, "Part 1"),
+        (13000, 25000, "Part 2"),
     ]
 
 

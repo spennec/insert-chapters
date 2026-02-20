@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 TIMESTAMP_RE = re.compile(r"^(?P<ts>(?:\d+:)?\d{1,2}:\d{2})\s*(?:[-–—|]\s*)?(?P<title>.+?)\s*$")
+LEADING_END_TIMESTAMP_RE = re.compile(r"^(?:\d+:)?\d{1,2}:\d{2}\s+(?P<title>.+)$")
 
 
 @dataclass
@@ -61,6 +62,10 @@ def parse_chapter_file(path: Path) -> list[ChapterStart]:
 
         start_ms = parse_timestamp_to_ms(match.group("ts"))
         title = match.group("title").strip()
+        # Allow "start - end title" format by discarding the optional end timestamp.
+        end_match = LEADING_END_TIMESTAMP_RE.match(title)
+        if end_match:
+            title = end_match.group("title").strip()
         if not title:
             raise ValueError(f"Chapter title is empty on line {idx}: {line!r}")
 
@@ -78,7 +83,9 @@ def normalize_chapters(starts: list[ChapterStart], duration_ms: int) -> list[Cha
 
     starts_sorted = sorted(starts, key=lambda c: c.start_ms)
 
-    if starts_sorted[0].start_ms > 0:
+    if 0 < starts_sorted[0].start_ms < 10_000:
+        starts_sorted[0] = ChapterStart(start_ms=0, title=starts_sorted[0].title)
+    elif starts_sorted[0].start_ms > 0:
         starts_sorted.insert(0, ChapterStart(start_ms=0, title="Intro"))
 
     for i in range(1, len(starts_sorted)):
